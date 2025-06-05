@@ -14,6 +14,7 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 {
     private readonly ILoggerFactory _loggerFactory;
     private readonly Dictionary<TValue, TWeight> _breadthFirstSearchDistances;
+    private readonly Dictionary<(BreadthFirstSearchActorId, Guid), BreadthFirstSearchRunnerMessage.StartedWorkMessage> _pendingWork;
     private FrozenDictionary<TNode, BreadthFirstSearchActorId>? NodeActorIds { get; set; }
     public FrozenDictionary<BreadthFirstSearchActorId, BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>>? NodeActors { get; private set; }
 
@@ -21,12 +22,13 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         : base(BreadthFirstSearchRunnerId.New(), loggerFactory.CreateLogger<BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight>>())
     {
         _loggerFactory = loggerFactory;
+        _pendingWork = [];
         _breadthFirstSearchDistances = [];
     }
 
     public Task RunBreadthFirstSearchFrom(TNode start)
     {
-        throw new NotImplementedException();
+        throw new NotImplementedException();        
     }
 
     public void LoadGraph(DirectedGraph<TNode, TValue, TEdge, TWeight> graph)
@@ -120,12 +122,29 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 
     private Task HandleStartedWorkMessageAsync(BreadthFirstSearchRunnerMessage.StartedWorkMessage startedWorkMessage)
     {
-        throw new NotImplementedException();
+        // Check if sender is a known node actor
+        if (startedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return Task.CompletedTask;
+        if (NodeActors?.ContainsKey(actorId) != true) return Task.CompletedTask;
+
+        _pendingWork[(actorId, startedWorkMessage.TaskId)] = startedWorkMessage;
+        return Task.CompletedTask;
     }
 
-    private Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
+    private async Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
     {
-        throw new NotImplementedException();
+        // Check if sender is a known node actor
+        if (finishedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return;
+        if (NodeActors?.ContainsKey(actorId) != true) return;
+
+        if (_pendingWork.Remove((actorId, finishedWorkMessage.TaskId)) && _pendingWork.Count == 0)
+        {
+            Task[] requestTotalWeightTasks = NodeActors
+                .Values
+                .AsParallel()
+                .Select(actor => actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeight(Id)).AsTask())
+                .ToArray();
+            await Task.WhenAll(requestTotalWeightTasks);
+        }
     }
 
     protected override async ValueTask DisposeActorAsync()
