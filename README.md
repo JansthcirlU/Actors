@@ -9,7 +9,7 @@ The basic idea is to allow concurrent computation by designing the software comp
 These actors can communicate with each other through *messages* and react to them.
 Each actor has a private state and handles messages in a synchronous, single-threaded manner.
 The concurrent nature of the system emerges when you allow actors to communicate with each other simultaneously.
-In this repo, I have implemented a basic actor type to demonstrate how to do distributed breadth-first search through actor communication alone.
+In this repo, I have implemented a basic actor type to demonstrate how to do distributed shortest-path search through actor communication alone.
 
 ## Designing a thread-safe actor
 
