@@ -1,0 +1,114 @@
+using System.Collections.Frozen;
+using System.Numerics;
+using Actors;
+using Graphs;
+using Microsoft.Extensions.Logging;
+
+namespace ActorGraphs;
+
+public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : ActorBase<BreadthFirstSearchActorId, BreadthFirstSearchMessage>
+    where TNode : struct, INode<TValue, TNode>, IEquatable<TNode>
+    where TEdge : struct, IDirectedEdge<TNode, TValue, TWeight, TEdge>
+    where TValue : struct, IEquatable<TValue>
+    where TWeight : struct, IComparable<TWeight>, IAdditionOperators<TWeight, TWeight, TWeight>, IAdditiveIdentity<TWeight, TWeight>
+{
+    public BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> Runner { get; }
+    public TNode Node { get; }
+    public FrozenDictionary<BreadthFirstSearchActorId, NeighbourInfo<TNode, TValue, TEdge, TWeight>> Neighbours { get; private set; }
+    public TWeight? TotalWeightFromStart { get; private set; }
+
+    internal BreadthFirstSearchActor(BreadthFirstSearchActorId id, BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> runner, TNode node, ILogger logger) : base(id, logger)
+    {
+        Runner = runner;
+        Node = node;
+        Neighbours = FrozenDictionary<BreadthFirstSearchActorId, NeighbourInfo<TNode, TValue, TEdge, TWeight>>.Empty;
+        TotalWeightFromStart = null; // No weight means "unreachable"
+    }
+
+    internal void InitialiseNeighbours(FrozenDictionary<BreadthFirstSearchActorId, NeighbourInfo<TNode, TValue, TEdge, TWeight>> neighbours)
+    {
+        Neighbours = neighbours;
+    }
+
+    protected override Task HandleMessageAsync(BreadthFirstSearchMessage message)
+        => message switch
+        {
+            BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startMessage => HandleStartMessageAsync(startMessage),
+            BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage => HandleUpdateWeightMessageAsync(updateWeightMessage),
+            BreadthFirstSearchMessage.GetTotalWeightFromStartMessage getTotalWeightFromStartMessage => HandleGetTotalWeightFromStartMessageAsync(getTotalWeightFromStartMessage),
+            _ => Task.CompletedTask
+        };
+
+    protected override async ValueTask DisposeActorAsync()
+    {
+        Task[] disposeNeighbourTasks = Neighbours
+            .Values
+            .AsParallel()
+            .Select(info => info.Neighbour.DisposeAsync().AsTask())
+            .ToArray();
+        await Task.WhenAll(disposeNeighbourTasks);
+    }
+
+    private async Task HandleStartMessageAsync(BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startMessage)
+    {
+        // Check if message comes from the runner this actor knows
+        if (startMessage.SenderId is not BreadthFirstSearchRunnerId runnerId) return;
+        if (!runnerId.Equals(Runner)) return;
+
+        // Initialize own weight to "zero"
+        TotalWeightFromStart = TWeight.AdditiveIdentity;
+
+        // Create update weight message
+        BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage =
+            BreadthFirstSearchMessage.UpdateTotalWeight(Id, startMessage.StartValue, TotalWeightFromStart.Value);
+
+        // Start sending
+        await NotifyNeighbours(updateWeightMessage);
+    }
+
+    private async Task HandleUpdateWeightMessageAsync(BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage)
+    {
+        // Check if message comes from a neighbour
+        if (updateWeightMessage.SenderId is not BreadthFirstSearchActorId neighbourId) return;
+        if (!Neighbours.TryGetValue(neighbourId, out NeighbourInfo<TNode, TValue, TEdge, TWeight> neighbourInfo)) return;
+
+        // Calculate total weight from signalled path
+        TWeight signalledTotal = updateWeightMessage.TotalWeightFromStart + neighbourInfo.DistanceFromNeighbour;
+
+        // Compare to own total weight
+        bool isSmallerTotal = TotalWeightFromStart is null || signalledTotal.CompareTo(TotalWeightFromStart.Value) < 0;
+
+        // If new weight is less than own total weight, update own weight and signal to neighbours
+        if (isSmallerTotal)
+        {
+            TotalWeightFromStart = signalledTotal;
+            BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> message =
+                BreadthFirstSearchMessage.UpdateTotalWeight(Id, updateWeightMessage.StartValue, TotalWeightFromStart.Value); // Total weight is never null here
+
+            // Start sending
+            await NotifyNeighbours(message);
+        }
+    }
+
+    private async Task HandleGetTotalWeightFromStartMessageAsync(BreadthFirstSearchMessage.GetTotalWeightFromStartMessage getTotalWeightFromStartMessage)
+    {
+        // Check if message comes from the runner this actor knows
+        if (getTotalWeightFromStartMessage.SenderId is not BreadthFirstSearchRunnerId runnerId) return;
+        if (!runnerId.Equals(Runner)) return;
+
+        // Create and send message to signal total weight
+        BreadthFirstSearchRunnerMessage.TotalWeightFromStartMessage<TWeight> sendTotalWeightMessage =
+            BreadthFirstSearchRunnerMessage.SendTotalWeight(Id, TotalWeightFromStart);
+        await Runner.SendAsync(sendTotalWeightMessage);
+    }
+
+    private async Task NotifyNeighbours(BreadthFirstSearchMessage message)
+    {
+        Task[] notifyNeighbourTasks = Neighbours
+            .Values
+            .AsParallel()
+            .Select(info => info.Neighbour.SendAsync(message).AsTask())
+            .ToArray();
+        await Task.WhenAll(notifyNeighbourTasks);
+    }
+}
