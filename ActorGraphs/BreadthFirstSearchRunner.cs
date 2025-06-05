@@ -14,6 +14,9 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 {
     private readonly ILoggerFactory _loggerFactory;
     private readonly Dictionary<TValue, TWeight> _breadthFirstSearchDistances;
+    private readonly Dictionary<(BreadthFirstSearchActorId, Guid), BreadthFirstSearchRunnerMessage.StartedWorkMessage> _pendingWork;
+    private bool _workInitiated;
+    private TaskCompletionSource<bool>? _runCompletionSource;
     private FrozenDictionary<TNode, BreadthFirstSearchActorId>? NodeActorIds { get; set; }
     public FrozenDictionary<BreadthFirstSearchActorId, BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>>? NodeActors { get; private set; }
 
@@ -21,12 +24,27 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         : base(BreadthFirstSearchRunnerId.New(), loggerFactory.CreateLogger<BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight>>())
     {
         _loggerFactory = loggerFactory;
+        _pendingWork = [];
         _breadthFirstSearchDistances = [];
     }
 
-    public Task RunBreadthFirstSearchFrom(TNode start)
+    public async Task RunBreadthFirstSearchFrom(TNode start, CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        // Create task completion source
+        _runCompletionSource = new();
+        using CancellationTokenRegistration registration = cancellationToken.Register(() => _runCompletionSource.TrySetCanceled());
+
+        // Find starting node actor
+        if (NodeActorIds?.TryGetValue(start, out BreadthFirstSearchActorId startNodeActorId) != true) return;
+        if (NodeActors?.TryGetValue(startNodeActorId, out BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>? startNodeActor) != true) return;
+
+        // Start node actor was found, kick off run
+        _workInitiated = true;
+        BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startSearchMessage = BreadthFirstSearchMessage.StartFrom(Id, start.Value);
+        await startNodeActor!.SendAsync(startSearchMessage);
+
+        // Wait till task completion source finishes
+        await _runCompletionSource.Task;
     }
 
     public void LoadGraph(DirectedGraph<TNode, TValue, TEdge, TWeight> graph)
@@ -120,12 +138,31 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 
     private Task HandleStartedWorkMessageAsync(BreadthFirstSearchRunnerMessage.StartedWorkMessage startedWorkMessage)
     {
-        throw new NotImplementedException();
+        // Check if sender is a known node actor
+        if (startedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return Task.CompletedTask;
+        if (NodeActors?.ContainsKey(actorId) != true) return Task.CompletedTask;
+
+        _pendingWork[(actorId, startedWorkMessage.TaskId)] = startedWorkMessage;
+        return Task.CompletedTask;
     }
 
-    private Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
+    private async Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
     {
-        throw new NotImplementedException();
+        // Check if sender is a known node actor
+        if (finishedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return;
+        if (NodeActors?.ContainsKey(actorId) != true) return;
+
+        // The run finishes when there's no more pending work after removing the task
+        if (_pendingWork.Remove((actorId, finishedWorkMessage.TaskId)) && _pendingWork.Count == 0 && _workInitiated)
+        {
+            Task[] requestTotalWeightTasks = NodeActors
+                .Values
+                .AsParallel()
+                .Select(actor => actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeight(Id)).AsTask())
+                .ToArray();
+            await Task.WhenAll(requestTotalWeightTasks);
+            _runCompletionSource?.TrySetResult(true); // Signals that the run is finished
+        }
     }
 
     protected override async ValueTask DisposeActorAsync()

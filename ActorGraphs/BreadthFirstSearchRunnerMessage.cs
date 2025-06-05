@@ -7,16 +7,16 @@ public abstract record BreadthFirstSearchRunnerMessage(IActorId SenderId) : IMes
 {
     public sealed record TotalWeightFromStartMessage<TWeight>(IActorId SenderId, TWeight? TotalWeight) : BreadthFirstSearchRunnerMessage(SenderId)
         where TWeight : struct, IComparable<TWeight>, IAdditionOperators<TWeight, TWeight, TWeight>, IAdditiveIdentity<TWeight, TWeight>;
-    public sealed record StartedWorkMessage(IActorId SenderId) : BreadthFirstSearchRunnerMessage(SenderId);
-    public sealed record FinishedWorkMessage(IActorId SenderId) : BreadthFirstSearchRunnerMessage(SenderId);
+    public sealed record StartedWorkMessage(IActorId SenderId, Guid TaskId) : BreadthFirstSearchRunnerMessage(SenderId);
+    public sealed record FinishedWorkMessage(IActorId SenderId, Guid TaskId) : BreadthFirstSearchRunnerMessage(SenderId);
 
     public static TotalWeightFromStartMessage<TWeight> SendTotalWeight<TWeight>(IActorId senderId, TWeight? totalWeight)
         where TWeight : struct, IComparable<TWeight>, IAdditionOperators<TWeight, TWeight, TWeight>, IAdditiveIdentity<TWeight, TWeight>
         => new(senderId, totalWeight);
 
-    public static StartedWorkMessage WorkStarted(IActorId senderId)
-        => new(senderId);
+    public static StartedWorkMessage WorkStarted(IActorId senderId, Guid taskId)
+        => new(senderId, taskId);
 
-    public static FinishedWorkMessage WorkFinished(IActorId senderId)
-        => new(senderId);
+    public static FinishedWorkMessage WorkFinished(IActorId senderId, Guid taskId)
+        => new(senderId, taskId);
 }
