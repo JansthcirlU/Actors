@@ -58,6 +58,17 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         // Expect start node value to be equal to own node value
         if (!Node.Value.Equals(startMessage.StartValue)) return;
 
+        // If no neighbours, signal to runner that work is finished
+        if (Neighbours.Count == 0)
+        {
+            BreadthFirstSearchRunnerMessage.NoNeighboursMessage<TValue> noNeighboursMessage =
+                BreadthFirstSearchRunnerMessage.NoNeighbours(Id, Node.Value);
+            await Runner.SendAsync(noNeighboursMessage);
+
+            // Leave early before doing any work by accident
+            return;
+        }
+
         // Initialize own weight to "zero"
         TotalWeightFromStart = TWeight.AdditiveIdentity;
 
@@ -65,8 +76,16 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage =
             BreadthFirstSearchMessage.UpdateTotalWeight(Id, startMessage.StartValue, TotalWeightFromStart!.Value);
 
-        // Start sending
+        Guid taskId = Guid.NewGuid();
+
+        // Notify the runner that work has started
+        await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkStarted(Id, taskId));
+
+        // Message neighbours (do work)
         await NotifyNeighbours(updateWeightMessage);
+
+        // Notify the runner that work has finished
+        await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkFinished(Id, taskId));
     }
 
     private async Task HandleUpdateWeightMessageAsync(BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage)
