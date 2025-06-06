@@ -53,7 +53,7 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
     {
         // Check if message comes from the runner this actor knows
         if (startMessage.SenderId is not BreadthFirstSearchRunnerId runnerId) return;
-        if (!runnerId.Equals(Runner)) return;
+        if (!runnerId.Equals(Runner.Id)) return;
 
         // Expect start node value to be equal to own node value
         if (!Node.Value.Equals(startMessage.StartValue)) return;
@@ -125,7 +125,7 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
     {
         // Check if message comes from the runner this actor knows
         if (getTotalWeightFromStartMessage.SenderId is not BreadthFirstSearchRunnerId runnerId) return;
-        if (!runnerId.Equals(Runner)) return;
+        if (!runnerId.Equals(Runner.Id)) return;
 
         // Create and send message to signal total weight
         BreadthFirstSearchRunnerMessage.TotalWeightFromStartMessage<TWeight> sendTotalWeightMessage =
