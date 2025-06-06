@@ -113,6 +113,9 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
             BreadthFirstSearchRunnerMessage.TotalWeightFromStartMessage<TWeight> totalWeightFromStartMessage => HandleTotalWeightFromStartMessageAsync(totalWeightFromStartMessage),
             BreadthFirstSearchRunnerMessage.StartedWorkMessage startedWorkMessage => HandleStartedWorkMessageAsync(startedWorkMessage),
             BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage => HandleFinishedWorkMessageAsync(finishedWorkMessage),
+            BreadthFirstSearchRunnerMessage.NoNeighboursMessage<TValue> noNeighboursMessage => HandleNoNeighboursMessageAsync(noNeighboursMessage),
+            BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage => HandleRunFinishedMessageAsync(runFinishedMessage),
+            BreadthFirstSearchRunnerMessage.RunFinishedImmediatelyMessage<TValue> runFinishedImmediatelyMessage => HandleRunFinishedImmediatelyMessageAsync(runFinishedImmediatelyMessage),
             _ => Task.CompletedTask
         };
 
@@ -161,8 +164,51 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
                 .Select(actor => actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeight(Id)).AsTask())
                 .ToArray();
             await Task.WhenAll(requestTotalWeightTasks);
-            _runCompletionSource?.TrySetResult(true); // Signals that the run is finished
+
+            // After all actors have sent their weight, signal self to finish run
+            BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage =
+                BreadthFirstSearchRunnerMessage.RunFinished(Id);
+            await SendAsync(runFinishedMessage);
         }
+    }
+
+    private async Task HandleNoNeighboursMessageAsync(BreadthFirstSearchRunnerMessage.NoNeighboursMessage<TValue> noNeighboursMessage)
+    {
+        // Check if sender is a known node actor
+        if (noNeighboursMessage.SenderId is not BreadthFirstSearchActorId actorId) return;
+        if (NodeActors?.TryGetValue(actorId, out BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>? actor) != true) return;
+
+        if (_workInitiated)
+        {
+            BreadthFirstSearchRunnerMessage.RunFinishedImmediatelyMessage<TValue> runFinishedImmediatelyMessage =
+                BreadthFirstSearchRunnerMessage.RunFinishedImmediately(Id, noNeighboursMessage.ActorNodeValue);
+            await SendAsync(runFinishedImmediatelyMessage);
+        }
+    }
+
+    private Task HandleRunFinishedMessageAsync(BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage)
+    {
+        // Check if message comes from self
+        if (runFinishedMessage.SenderId is not BreadthFirstSearchRunnerId selfId) return Task.CompletedTask;
+        if (!selfId.Equals(Id)) return Task.CompletedTask;
+
+        // Internally signal run completion
+        _runCompletionSource?.TrySetResult(true);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleRunFinishedImmediatelyMessageAsync(BreadthFirstSearchRunnerMessage.RunFinishedImmediatelyMessage<TValue> runFinishedImmediatelyMessage)
+    {
+        // Check if message comes from self
+        if (runFinishedImmediatelyMessage.SenderId is not BreadthFirstSearchRunnerId selfId) return Task.CompletedTask;
+        if (!selfId.Equals(Id)) return Task.CompletedTask;
+
+        // Update shortest-path distances
+        _breadthFirstSearchDistances.TryAdd(runFinishedImmediatelyMessage.StartValue, TWeight.AdditiveIdentity);
+
+        // Internally signal run completion
+        _runCompletionSource?.TrySetResult(true);
+        return Task.CompletedTask;
     }
 
     protected override async ValueTask DisposeActorAsync()
@@ -173,6 +219,9 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
             .Select(actor => actor.DisposeAsync().AsTask())
             .ToArray() ?? [];
         await Task.WhenAll(disposeActorTasks);
+
+        _runCompletionSource = null;
+        NodeActorIds = null;
         NodeActors = null;
     }
 }
