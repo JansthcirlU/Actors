@@ -14,6 +14,7 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 {
     private readonly ILoggerFactory _loggerFactory;
     private readonly Dictionary<TValue, TWeight> _breadthFirstSearchDistances;
+    private int _pendingWeightResponses;
     private readonly Dictionary<(BreadthFirstSearchActorId, Guid), BreadthFirstSearchRunnerMessage.StartedWorkMessage> _pendingWork;
     private bool _workInitiated;
     private TaskCompletionSource<bool>? _runCompletionSource;
@@ -139,6 +140,7 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
             }
         }
 
+        if (--_pendingWeightResponses == 0) _ = SendAsync(BreadthFirstSearchRunnerMessage.RunFinished(Id));
         return Task.CompletedTask;
     }
 
@@ -152,26 +154,26 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         return Task.CompletedTask;
     }
 
-    private async Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
+    private Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
     {
         // Check if sender is a known node actor
-        if (finishedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return;
-        if (NodeActors?.ContainsKey(actorId) != true) return;
+        if (finishedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return Task.CompletedTask;
+        if (NodeActors?.ContainsKey(actorId) != true) return Task.CompletedTask;
 
         // When there's no more pending work, prepare to finish the run
         if (_pendingWork.Remove((actorId, finishedWorkMessage.TaskId)) && _pendingWork.Count == 0 && _workInitiated)
         {
+            // Set expected number of responses
+            _pendingWeightResponses = NodeActors.Count;
+
             // Ask each node actor to send back its shortest path weight from the start node
             foreach (BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> actor in NodeActors.Values)
             {
                 _ = actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeightFromStart(Id));
             }
-
-            // After all actors have sent their weight, signal self to finish run
-                BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage =
-                BreadthFirstSearchRunnerMessage.RunFinished(Id);
-            await SendAsync(runFinishedMessage);
         }
+
+        return Task.CompletedTask;
     }
 
     private async Task HandleNoNeighboursMessageAsync(BreadthFirstSearchRunnerMessage.NoNeighboursMessage<TValue> noNeighboursMessage)
