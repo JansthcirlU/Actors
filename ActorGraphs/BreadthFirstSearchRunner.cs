@@ -164,7 +164,7 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
             Task[] requestTotalWeightTasks = NodeActors
                 .Values
                 .AsParallel()
-                .Select(actor => actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeight(Id)).AsTask())
+                .Select(actor => actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeightFromStart(Id)).AsTask())
                 .ToArray();
             await Task.WhenAll(requestTotalWeightTasks);
 
