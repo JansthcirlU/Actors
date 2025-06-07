@@ -28,15 +28,15 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         _breadthFirstSearchDistances = [];
     }
 
-    public async Task RunBreadthFirstSearchFrom(TNode start, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<TValue, TWeight>?> RunBreadthFirstSearchFrom(TNode start, CancellationToken cancellationToken)
     {
         // Create task completion source
         _runCompletionSource = new();
         using CancellationTokenRegistration registration = cancellationToken.Register(() => _runCompletionSource.TrySetCanceled());
 
         // Find starting node actor
-        if (NodeActorIds?.TryGetValue(start, out BreadthFirstSearchActorId startNodeActorId) != true) return;
-        if (NodeActors?.TryGetValue(startNodeActorId, out BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>? startNodeActor) != true) return;
+        if (NodeActorIds?.TryGetValue(start, out BreadthFirstSearchActorId startNodeActorId) != true) return null;
+        if (NodeActors?.TryGetValue(startNodeActorId, out BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>? startNodeActor) != true) return null;
 
         // Start node actor was found, kick off run
         _workInitiated = true;
@@ -45,6 +45,9 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 
         // Wait till task completion source finishes
         await _runCompletionSource.Task;
+
+        // Return distances
+        return _breadthFirstSearchDistances.AsReadOnly();
     }
 
     public void LoadGraph(DirectedGraph<TNode, TValue, TEdge, TWeight> graph)

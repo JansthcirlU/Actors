@@ -16,6 +16,6 @@ if (one is null) return;
 
 // Load graph and run search
 searchRunner.LoadGraph(fullyConnectedGraph);
-await searchRunner.RunBreadthFirstSearchFrom(one.Value, CancellationToken.None);
+IReadOnlyDictionary<int, int>? distances = await searchRunner.RunBreadthFirstSearchFrom(one.Value, CancellationToken.None);
 
 Debugger.Break();
