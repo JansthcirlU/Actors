@@ -158,18 +158,17 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         if (finishedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return;
         if (NodeActors?.ContainsKey(actorId) != true) return;
 
-        // The run finishes when there's no more pending work after removing the task
+        // When there's no more pending work, prepare to finish the run
         if (_pendingWork.Remove((actorId, finishedWorkMessage.TaskId)) && _pendingWork.Count == 0 && _workInitiated)
         {
-            Task[] requestTotalWeightTasks = NodeActors
-                .Values
-                .AsParallel()
-                .Select(actor => actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeightFromStart(Id)).AsTask())
-                .ToArray();
-            await Task.WhenAll(requestTotalWeightTasks);
+            // Ask each node actor to send back its shortest path weight from the start node
+            foreach (BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> actor in NodeActors.Values)
+            {
+                _ = actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeightFromStart(Id));
+            }
 
             // After all actors have sent their weight, signal self to finish run
-            BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage =
+                BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage =
                 BreadthFirstSearchRunnerMessage.RunFinished(Id);
             await SendAsync(runFinishedMessage);
         }
@@ -218,7 +217,6 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
     {
         Task[] disposeActorTasks = NodeActors?
             .Values
-            .AsParallel()
             .Select(actor => actor.DisposeAsync().AsTask())
             .ToArray() ?? [];
         await Task.WhenAll(disposeActorTasks);

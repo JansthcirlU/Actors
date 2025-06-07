@@ -133,13 +133,12 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         await Runner.SendAsync(sendTotalWeightMessage);
     }
 
-    private async Task NotifyNeighbours(BreadthFirstSearchMessage message)
+    private Task NotifyNeighbours(BreadthFirstSearchMessage message)
     {
-        Task[] notifyNeighbourTasks = Neighbours
-            .Values
-            .AsParallel()
-            .Select(info => info.Neighbour.SendAsync(message).AsTask())
-            .ToArray();
-        await Task.WhenAll(notifyNeighbourTasks);
+        foreach (var (neighbour, _) in Neighbours.Values)
+        {
+            _ = neighbour.SendAsync(message);
+        }
+        return Task.CompletedTask;
     }
 }
