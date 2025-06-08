@@ -39,15 +39,8 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
             _ => Task.CompletedTask
         };
 
-    protected override async ValueTask DisposeActorAsync()
-    {
-        Task[] disposeNeighbourTasks = Neighbours
-            .Values
-            .AsParallel()
-            .Select(info => info.Neighbour.DisposeAsync().AsTask())
-            .ToArray();
-        await Task.WhenAll(disposeNeighbourTasks);
-    }
+    protected override ValueTask DisposeActorAsync()
+        => ValueTask.CompletedTask; // No-op because Runner will clean up
 
     private async Task HandleStartMessageAsync(BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startMessage)
     {
@@ -83,6 +76,8 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
 
         // Message neighbours (do work)
         await NotifyNeighbours(updateWeightMessage);
+
+        await Task.Delay(100); // Somehow this fixes the race condition??
 
         // Notify the runner that work has finished
         await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkFinished(Id, taskId));
@@ -133,13 +128,12 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         await Runner.SendAsync(sendTotalWeightMessage);
     }
 
-    private async Task NotifyNeighbours(BreadthFirstSearchMessage message)
+    private Task NotifyNeighbours(BreadthFirstSearchMessage message)
     {
-        Task[] notifyNeighbourTasks = Neighbours
-            .Values
-            .AsParallel()
-            .Select(info => info.Neighbour.SendAsync(message).AsTask())
-            .ToArray();
-        await Task.WhenAll(notifyNeighbourTasks);
+        foreach ((BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> neighbour, TWeight _) in Neighbours.Values)
+        {
+            _ = neighbour.SendAsync(message);
+        }
+        return Task.CompletedTask;
     }
 }

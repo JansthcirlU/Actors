@@ -14,6 +14,6 @@ public abstract record BreadthFirstSearchMessage(IActorId SenderId) : IMessageTy
     public static UpdateWeightMessage<TValue, TWeight> UpdateTotalWeight<TValue, TWeight>(IActorId senderId, TValue startValue, TWeight totalWeightFromStart)
         => new(senderId, startValue, totalWeightFromStart);
 
-    public static GetTotalWeightFromStartMessage GetTotalWeight(IActorId senderId)
+    public static GetTotalWeightFromStartMessage GetTotalWeightFromStart(IActorId senderId)
         => new(senderId);
 }

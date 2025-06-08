@@ -7,7 +7,7 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
 {
-    private readonly ILogger _logger;
+    protected readonly ILogger _logger;
     private const string SendFailedLoggerTemplate = "Could not send message to actor {ActorId}: {ExceptionMessage}";
     private readonly Channel<TMessageType> _mailbox;
     private readonly CancellationTokenSource _cancellationTokenSource;

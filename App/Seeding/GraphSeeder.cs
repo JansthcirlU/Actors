@@ -22,17 +22,19 @@ public static class GraphSeeder
 
         DirectedGraph<IntegerNode, int, IntegerEdge, int> graph = new();
 
-        foreach (int number in GetNumbers(nodes))
+        int[] numbers = GetNumbers(nodes).ToArray();
+
+        foreach (int number in numbers)
         {
             graph.TryAddNode(number, out _);
         }
 
-        foreach (int sourceValue in GetNumbers(nodes))
+        foreach (int sourceValue in numbers)
         {
             IntegerNode? source = graph.FindByValue(sourceValue);
             if (source is null) continue;
 
-            foreach (int destinationValue in GetNumbers(nodes))
+            foreach (int destinationValue in numbers)
             {
                 if (sourceValue == destinationValue) continue;
 
