@@ -31,28 +31,29 @@ int[] nodeCounts = [100, 200, 400, 800, 1_600, 3_200, 6_400];
 
 foreach (int nodeCount in nodeCounts)
 {
-    DirectedGraph<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> fullyConnectedGraph = GraphSeeder.CreateFullyConnectedGraph(nodeCount);
+    DirectedGraph<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int>? fullyConnectedGraph = GraphSeeder.CreateFullyConnectedGraph(nodeCount);
     GraphSeeder.IntegerNode? one = fullyConnectedGraph.FindByValue(1);
-    BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> searchRunner = new(loggerFactory);
 
     if (one is null) return;
 
-    // Load graph and run search
-    sw.Restart();
-    searchRunner.LoadGraph(fullyConnectedGraph);
-    sw.Stop();
+    IReadOnlyDictionary<int, int> distancesConcurrent;
+    await using (BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> searchRunner = new(loggerFactory))
+    {
+        // Load graph and run search
+        sw.Restart();
+        searchRunner.LoadGraph(fullyConnectedGraph);
+        sw.Stop();
 
-    TimeSpan timeToLoad = sw.Elapsed;
-    Console.WriteLine($"Time to load a fully connected graph with {nodeCount} nodes: {timeToLoad}");
+        TimeSpan timeToLoad = sw.Elapsed;
+        Console.WriteLine($"Time to load a fully connected graph with {nodeCount} nodes: {timeToLoad}");
 
-    sw.Restart();
-    IReadOnlyDictionary<int, int> distancesConcurrent = await searchRunner.RunBreadthFirstSearchFrom(one.Value, CancellationToken.None);
-    sw.Stop();
+        sw.Restart();
+        distancesConcurrent = await searchRunner.RunBreadthFirstSearchFrom(one.Value, CancellationToken.None);
+        sw.Stop();
 
-    TimeSpan timeToSearchConcurrently = sw.Elapsed;
-    Console.WriteLine($"Time to run concurrent search: {timeToSearchConcurrently}");
-
-    await searchRunner.DisposeAsync(); // dispose to free memory before doing synchronous search
+        TimeSpan timeToSearchConcurrently = sw.Elapsed;
+        Console.WriteLine($"Time to run concurrent search: {timeToSearchConcurrently}");
+    }
 
     // Search graph synchronously
     sw.Restart();
@@ -76,6 +77,10 @@ foreach (int nodeCount in nodeCounts)
 
     Console.WriteLine("Both techniques yielded the same distances!");
     Console.WriteLine();
+
+    fullyConnectedGraph = null;
+    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+    Thread.Sleep(250);
 }
 
 Console.WriteLine($"Benchmark finished at {DateTime.Now}.");
