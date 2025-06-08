@@ -84,6 +84,8 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         // Message neighbours (do work)
         await NotifyNeighbours(updateWeightMessage);
 
+        await Task.Delay(100); // Somehow this fixes the race condition??
+
         // Notify the runner that work has finished
         await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkFinished(Id, taskId));
     }
