@@ -15,9 +15,9 @@ using LoggerFactory loggerFactory = new();
 Stopwatch sw = new();
 
 // Warmup with small graph
-var warmupGraph = GraphSeeder.CreateFullyConnectedGraph(100);
-var warmupOne = warmupGraph.FindByValue(1);
-var warmupSearchRunner = new BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int>(loggerFactory);
+DirectedGraph<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupGraph = GraphSeeder.CreateFullyConnectedGraph(100);
+GraphSeeder.IntegerNode? warmupOne = warmupGraph.FindByValue(1);
+BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupSearchRunner = new BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int>(loggerFactory);
 warmupSearchRunner.LoadGraph(warmupGraph);
 await warmupSearchRunner.RunBreadthFirstSearchFrom(warmupOne!.Value, CancellationToken.None);
 await warmupSearchRunner.DisposeAsync();

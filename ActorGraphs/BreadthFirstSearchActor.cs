@@ -40,14 +40,7 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         };
 
     protected override ValueTask DisposeActorAsync()
-    {
-        // Task[] disposeNeighbourTasks = Neighbours
-        //     .Values
-        //     .Select(info => info.Neighbour.DisposeAsync().AsTask())
-        //     .ToArray();
-        // await Task.WhenAll(disposeNeighbourTasks);
-        return ValueTask.CompletedTask; // No-op because Runner will clean up
-    }
+        => ValueTask.CompletedTask; // No-op because Runner will clean up
 
     private async Task HandleStartMessageAsync(BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startMessage)
     {
@@ -137,7 +130,7 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
 
     private Task NotifyNeighbours(BreadthFirstSearchMessage message)
     {
-        foreach (var (neighbour, _) in Neighbours.Values)
+        foreach ((BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> neighbour, TWeight _) in Neighbours.Values)
         {
             _ = neighbour.SendAsync(message);
         }

@@ -28,11 +28,11 @@ public static class DijkstraSearchRunner
             // Get next edges
             if (!graph.TryGetOutgoingEdges(nextNode, out IEnumerable<TEdge>? outgoing)) continue;
 
-            foreach (var e in outgoing!)
+            foreach (TEdge e in outgoing!)
             {
                 // Set current distance to known reachable destination
-                var destination = e.Destination;
-                var candidateTotalWeight = weightToNextNode + e.Weight;
+                TNode destination = e.Destination;
+                TWeight candidateTotalWeight = weightToNextNode + e.Weight;
 
                 if (!distances.TryGetValue(destination.Value, out TWeight currentTotalWeight) || candidateTotalWeight.CompareTo(currentTotalWeight) < 0)
                 {
