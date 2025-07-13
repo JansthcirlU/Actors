@@ -3,6 +3,11 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# Specification: Ignore all but TLA+ specification and configuration files
+Specification/**
+!Specification/**/*.tla
+!Specification/**/*.cfg
+
 # dotenv files
 .env
 
