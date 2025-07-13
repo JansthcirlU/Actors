@@ -5,6 +5,7 @@
 
 # Specification: Ignore all but TLA+ specification and configuration files
 Specification/**
+!Specification/**/
 !Specification/**/*.tla
 !Specification/**/*.cfg
 
