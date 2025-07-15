@@ -1,10 +1,10 @@
 namespace Graphs;
 
-public interface INode<TValue, TNode>
+public interface INode<TValue, TSelf>
     where TValue : struct, IEquatable<TValue>
-    where TNode : INode<TValue, TNode>, IEquatable<TNode>
+    where TSelf : INode<TValue, TSelf>, IEquatable<TSelf>
 {
     TValue Value { get; }
 
-    static abstract TNode Create(TValue value);
+    static abstract TSelf Create(TValue value);
 }

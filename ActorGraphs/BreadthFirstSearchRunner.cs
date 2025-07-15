@@ -1,4 +1,5 @@
-﻿using System.Collections.Frozen;
+﻿using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Numerics;
 using Actors;
 using Graphs;
@@ -6,23 +7,23 @@ using Microsoft.Extensions.Logging;
 
 namespace ActorGraphs;
 
-public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : ActorBase<BreadthFirstSearchRunnerId, BreadthFirstSearchRunnerMessage>
+public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : ActorBase<BreadthFirstSearchRunnerId, BreadthFirstSearchRunnerMessage, BreadthFirstSearchRunnerActorRef>
     where TNode : struct, INode<TValue, TNode>, IEquatable<TNode>
     where TEdge : struct, IDirectedEdge<TNode, TValue, TWeight, TEdge>
     where TValue : struct, IEquatable<TValue>
     where TWeight : struct, IComparable<TWeight>, IAdditionOperators<TWeight, TWeight, TWeight>, IAdditiveIdentity<TWeight, TWeight>
 {
     private readonly ILoggerFactory _loggerFactory;
-    private readonly Dictionary<TValue, TWeight> _breadthFirstSearchDistances;
+    private readonly ConcurrentDictionary<TValue, TWeight> _breadthFirstSearchDistances;
     private int _pendingWeightResponses;
-    private readonly Dictionary<(BreadthFirstSearchActorId, Guid), BreadthFirstSearchRunnerMessage.StartedWorkMessage> _pendingWork;
+    private readonly ConcurrentDictionary<(BreadthFirstSearchActorRef<TNode, TValue>, Guid), BreadthFirstSearchRunnerMessage.StartedWorkMessage> _pendingWork;
     private bool _workInitiated;
     private TaskCompletionSource<bool>? _runCompletionSource;
-    private FrozenDictionary<TNode, BreadthFirstSearchActorId>? NodeActorIds { get; set; }
-    public FrozenDictionary<BreadthFirstSearchActorId, BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>>? NodeActors { get; private set; }
+    private FrozenSet<BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>>? _nodeActors;
+    private FrozenSet<BreadthFirstSearchActorRef<TNode, TValue>>? _nodeActorReferences;
 
     public BreadthFirstSearchRunner(ILoggerFactory loggerFactory)
-        : base(BreadthFirstSearchRunnerId.New(), loggerFactory.CreateLogger<BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight>>())
+        : base(new BreadthFirstSearchRunnerActorRefFactory(BreadthFirstSearchRunnerId.New()), loggerFactory.CreateLogger<BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight>>())
     {
         _loggerFactory = loggerFactory;
         _pendingWork = [];
@@ -36,13 +37,12 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         using CancellationTokenRegistration registration = cancellationToken.Register(() => _runCompletionSource.TrySetCanceled());
 
         // Find starting node actor
-        if (NodeActorIds?.TryGetValue(start, out BreadthFirstSearchActorId startNodeActorId) != true) return FrozenDictionary<TValue, TWeight>.Empty;
-        if (NodeActors?.TryGetValue(startNodeActorId, out BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>? startNodeActor) != true) return FrozenDictionary<TValue, TWeight>.Empty;
+        if (_nodeActorReferences?.SingleOrDefault(actorRef => actorRef.Node.Equals(start)) is not BreadthFirstSearchActorRef<TNode, TValue> startRef) return FrozenDictionary<TValue, TWeight>.Empty;
 
         // Start node actor was found, kick off run
         _workInitiated = true;
-        BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startSearchMessage = BreadthFirstSearchMessage.StartFrom(Id, start.Value);
-        await startNodeActor!.SendAsync(startSearchMessage);
+        BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startSearchMessage = BreadthFirstSearchMessage.StartFrom(Reference, start.Value);
+        await startRef.SendAsync(startSearchMessage);
 
         // Wait till task completion source finishes
         await _runCompletionSource.Task;
@@ -53,62 +53,41 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 
     public void LoadGraph(DirectedGraph<TNode, TValue, TEdge, TWeight> graph)
     {
-        // Create actors for each node
-        FrozenDictionary<BreadthFirstSearchActorId, BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>> nodeActors = graph
+        // Initialize actors and references
+        _nodeActors = graph
             .Nodes
             .AsParallel()
-            .Select(node =>
+            .Select(n =>
             {
                 BreadthFirstSearchActorId actorId = BreadthFirstSearchActorId.New();
                 ILogger logger = _loggerFactory.CreateLogger<BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>>();
-                BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> actor = new(actorId, this, node, logger);
-                return (actorId, actor);
-            })
-            .ToFrozenDictionary(
-                t => t.actorId,
-                t => t.actor);
+                BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> actor = new(actorId, Reference, n, logger);
+                return actor;
+            }).ToFrozenSet();
+        _nodeActorReferences = _nodeActors
+            .Select(a => a.Reference)
+            .ToFrozenSet();
 
-        // Map actors dictionary to simpler lookup table by id
-        FrozenDictionary<TNode, BreadthFirstSearchActorId> nodeActorIds = nodeActors
+        // Create actor reference dictionary
+        FrozenDictionary<TNode, BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>> nodeActorRefs = _nodeActors
             .ToFrozenDictionary(
-                kvp => kvp.Value.Node,
-                kvp => kvp.Value.Id
+                actor => actor.Node,
+                actor => actor
             );
 
-        // Link node actors to their neighbours
+        // Link actors to neighbor actors
         Parallel.ForEach(
-            nodeActorIds,
+            nodeActorRefs,
             kvp =>
             {
-                // Get outgoing edges
                 graph.TryGetOutgoingEdges(kvp.Key, out IEnumerable<TEdge>? outgoingEdges);
-
-                // Create weights dictionary to each destination
-                FrozenDictionary<TNode, TWeight> weights = outgoingEdges!.ToFrozenDictionary(edge => edge.Destination, edge => edge.Weight);
-
-                // Convert weights dictionary to neighbour info dictionary
-                FrozenDictionary<BreadthFirstSearchActorId, NeighbourInfo<TNode, TValue, TEdge, TWeight>> neighbours = weights
-                    .AsParallel()
-                    .Select(weight =>
-                    {
-                        BreadthFirstSearchActorId neighbourId = nodeActorIds[weight.Key];
-                        BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> neighbour = nodeActors[neighbourId];
-                        NeighbourInfo<TNode, TValue, TEdge, TWeight> info = new(neighbour, weight.Value);
-                        return (neighbour.Id, info);
-                    })
+                FrozenDictionary<BreadthFirstSearchActorRef<TNode, TValue>, TWeight> neighbourDistances = outgoingEdges?
                     .ToFrozenDictionary(
-                        t => t.Id,
-                        t => t.info
-                    );
-
-                // Set neighbours for current actor
-                BreadthFirstSearchActorId actorId = nodeActorIds[kvp.Key];
-                nodeActors[actorId].InitialiseNeighbours(neighbours);
+                        edge => nodeActorRefs[edge.Destination].Reference,
+                        edge => edge.Weight
+                    ) ?? FrozenDictionary<BreadthFirstSearchActorRef<TNode, TValue>, TWeight>.Empty;
+                kvp.Value.InitialiseNeighbours(neighbourDistances);
             });
-
-        // Save list of initialised node actors
-        NodeActorIds = nodeActorIds;
-        NodeActors = nodeActors;
     }
 
     protected override Task HandleMessageAsync(BreadthFirstSearchRunnerMessage message)
@@ -123,78 +102,71 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
             _ => Task.CompletedTask
         };
 
-    private Task HandleTotalWeightFromStartMessageAsync(BreadthFirstSearchRunnerMessage.TotalWeightFromStartMessage<TWeight> totalWeightFromStartMessage)
+    private async Task HandleTotalWeightFromStartMessageAsync(BreadthFirstSearchRunnerMessage.TotalWeightFromStartMessage<TWeight> totalWeightFromStartMessage)
     {
         // Check if sender is known node actor
-        if (totalWeightFromStartMessage.SenderId is not BreadthFirstSearchActorId actorId) return Task.CompletedTask;
-        if (NodeActors?.ContainsKey(actorId) != true) return Task.CompletedTask;
+        if (totalWeightFromStartMessage.SenderRef is not BreadthFirstSearchActorRef<TNode, TValue> senderRef || _nodeActorReferences?.Contains(senderRef) != true) return;
 
 
         // Only store associated distance if not null (i.e. node should be reachable from start)
         if (totalWeightFromStartMessage.TotalWeight is TWeight newWeight)
         {
-            TValue actorNode = NodeActors[actorId].Node.Value;
+            TValue actorNode = senderRef.Node.Value;
             if (!_breadthFirstSearchDistances.TryGetValue(actorNode, out TWeight knownWeight) || newWeight.CompareTo(knownWeight) < 0)
             {
                 _breadthFirstSearchDistances[actorNode] = newWeight;
             }
         }
 
-        if (--_pendingWeightResponses == 0) _ = SendAsync(BreadthFirstSearchRunnerMessage.RunFinished(Id));
-        return Task.CompletedTask;
+        if (--_pendingWeightResponses == 0) await Reference.SendAsync(BreadthFirstSearchRunnerMessage.RunFinished(Reference));
     }
 
     private Task HandleStartedWorkMessageAsync(BreadthFirstSearchRunnerMessage.StartedWorkMessage startedWorkMessage)
     {
-        // Check if sender is a known node actor
-        if (startedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return Task.CompletedTask;
-        if (NodeActors?.ContainsKey(actorId) != true) return Task.CompletedTask;
+        // Check if sender is known node actor
+        if (startedWorkMessage.SenderRef is not BreadthFirstSearchActorRef<TNode, TValue> senderRef || _nodeActorReferences?.Contains(senderRef) != true) return Task.CompletedTask;
 
-        _pendingWork[(actorId, startedWorkMessage.TaskId)] = startedWorkMessage;
+        _pendingWork[(senderRef, startedWorkMessage.TaskId)] = startedWorkMessage;
         return Task.CompletedTask;
     }
 
-    private Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
+    private async Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
     {
-        // Check if sender is a known node actor
-        if (finishedWorkMessage.SenderId is not BreadthFirstSearchActorId actorId) return Task.CompletedTask;
-        if (NodeActors?.ContainsKey(actorId) != true) return Task.CompletedTask;
+        // Check if sender is known node actor
+        if (finishedWorkMessage.SenderRef is not BreadthFirstSearchActorRef<TNode, TValue> senderRef || _nodeActorReferences?.Contains(senderRef) != true) return;
 
         // When there's no more pending work, prepare to finish the run
-        if (_pendingWork.Remove((actorId, finishedWorkMessage.TaskId)) && _pendingWork.Count == 0 && _workInitiated)
+        if (_pendingWork.Remove((senderRef, finishedWorkMessage.TaskId), out _) && _pendingWork.Count == 0 && _workInitiated)
         {
             // Set expected number of responses
-            _pendingWeightResponses = NodeActors.Count;
+            _pendingWeightResponses = _nodeActorReferences.Count;
 
             // Ask each node actor to send back its shortest path weight from the start node
-            foreach (BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> actor in NodeActors.Values)
+            foreach (BreadthFirstSearchActorRef<TNode, TValue> actorRef in _nodeActorReferences)
             {
-                _ = actor.SendAsync(BreadthFirstSearchMessage.GetTotalWeightFromStart(Id));
+                await actorRef.SendAsync(BreadthFirstSearchMessage.GetTotalWeightFromStart(Reference));
             }
         }
-
-        return Task.CompletedTask;
     }
 
     private async Task HandleNoNeighboursMessageAsync(BreadthFirstSearchRunnerMessage.NoNeighboursMessage<TValue> noNeighboursMessage)
     {
-        // Check if sender is a known node actor
-        if (noNeighboursMessage.SenderId is not BreadthFirstSearchActorId actorId) return;
-        if (NodeActors?.TryGetValue(actorId, out BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>? actor) != true) return;
+        // Check if sender is known node actor
+        if (noNeighboursMessage.SenderRef is not BreadthFirstSearchActorRef<TNode, TValue> senderRef || _nodeActorReferences?.Contains(senderRef) != true) return;
 
         if (_workInitiated)
         {
             BreadthFirstSearchRunnerMessage.RunFinishedImmediatelyMessage<TValue> runFinishedImmediatelyMessage =
-                BreadthFirstSearchRunnerMessage.RunFinishedImmediately(Id, noNeighboursMessage.ActorNodeValue);
-            await SendAsync(runFinishedImmediatelyMessage);
+                BreadthFirstSearchRunnerMessage.RunFinishedImmediately(Reference, noNeighboursMessage.ActorNodeValue);
+            await Reference.SendAsync(runFinishedImmediatelyMessage);
         }
     }
 
     private Task HandleRunFinishedMessageAsync(BreadthFirstSearchRunnerMessage.RunFinishedMessage runFinishedMessage)
     {
         // Check if message comes from self
-        if (runFinishedMessage.SenderId is not BreadthFirstSearchRunnerId selfId) return Task.CompletedTask;
-        if (!selfId.Equals(Id)) return Task.CompletedTask;
+        if (runFinishedMessage.SenderRef is not BreadthFirstSearchRunnerActorRef selfRef) return Task.CompletedTask;
+        if (!selfRef.Equals(Reference)) return Task.CompletedTask;
 
         // Internally signal run completion
         _runCompletionSource?.TrySetResult(true);
@@ -204,8 +176,8 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
     private Task HandleRunFinishedImmediatelyMessageAsync(BreadthFirstSearchRunnerMessage.RunFinishedImmediatelyMessage<TValue> runFinishedImmediatelyMessage)
     {
         // Check if message comes from self
-        if (runFinishedImmediatelyMessage.SenderId is not BreadthFirstSearchRunnerId selfId) return Task.CompletedTask;
-        if (!selfId.Equals(Id)) return Task.CompletedTask;
+        if (runFinishedImmediatelyMessage.SenderRef is not BreadthFirstSearchRunnerActorRef selfRef) return Task.CompletedTask;
+        if (!selfRef.Equals(Reference)) return Task.CompletedTask;
 
         // Update shortest-path distances
         _breadthFirstSearchDistances.TryAdd(runFinishedImmediatelyMessage.StartValue, TWeight.AdditiveIdentity);
@@ -217,14 +189,13 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 
     protected override async ValueTask DisposeActorAsync()
     {
-        Task[] disposeActorTasks = NodeActors?
-            .Values
+        Task[] disposeActorTasks = _nodeActors?
             .Select(actor => actor.DisposeAsync().AsTask())
             .ToArray() ?? [];
         await Task.WhenAll(disposeActorTasks);
 
         _runCompletionSource = null;
-        NodeActorIds = null;
-        NodeActors = null;
+        _nodeActors = null;
+        _nodeActorReferences = null;
     }
 }

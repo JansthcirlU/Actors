@@ -2,18 +2,18 @@ using Actors;
 
 namespace ActorGraphs;
 
-public abstract record BreadthFirstSearchMessage(IActorId SenderId) : IMessageType<BreadthFirstSearchActorId>
+public abstract record BreadthFirstSearchMessage(IActorRef SenderRef) : IMessageType<BreadthFirstSearchActorId>
 {
-    public sealed record StartBreadthFirstSearchMessage<TValue>(IActorId SenderId, TValue StartValue) : BreadthFirstSearchMessage(SenderId);
-    public sealed record UpdateWeightMessage<TValue, TWeight>(IActorId SenderId, TValue StartValue, TWeight TotalWeightFromStart) : BreadthFirstSearchMessage(SenderId);
-    public sealed record GetTotalWeightFromStartMessage(IActorId SenderId) : BreadthFirstSearchMessage(SenderId);
+    public sealed record StartBreadthFirstSearchMessage<TValue>(IActorRef SenderRef, TValue StartValue) : BreadthFirstSearchMessage(SenderRef);
+    public sealed record UpdateWeightMessage<TValue, TWeight>(IActorRef SenderRef, TValue StartValue, TWeight TotalWeightFromStart) : BreadthFirstSearchMessage(SenderRef);
+    public sealed record GetTotalWeightFromStartMessage(IActorRef SenderRef) : BreadthFirstSearchMessage(SenderRef);
 
-    public static StartBreadthFirstSearchMessage<TValue> StartFrom<TValue>(IActorId senderId, TValue startValue)
-        => new(senderId, startValue);
+    public static StartBreadthFirstSearchMessage<TValue> StartFrom<TValue>(IActorRef senderRef, TValue startValue)
+        => new(senderRef, startValue);
 
-    public static UpdateWeightMessage<TValue, TWeight> UpdateTotalWeight<TValue, TWeight>(IActorId senderId, TValue startValue, TWeight totalWeightFromStart)
-        => new(senderId, startValue, totalWeightFromStart);
+    public static UpdateWeightMessage<TValue, TWeight> UpdateTotalWeight<TValue, TWeight>(IActorRef senderRef, TValue startValue, TWeight totalWeightFromStart)
+        => new(senderRef, startValue, totalWeightFromStart);
 
-    public static GetTotalWeightFromStartMessage GetTotalWeightFromStart(IActorId senderId)
-        => new(senderId);
+    public static GetTotalWeightFromStartMessage GetTotalWeightFromStart(IActorRef senderRef)
+        => new(senderRef);
 }

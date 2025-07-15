@@ -1,11 +1,9 @@
 ﻿namespace Actors;
 
-public interface IActor<TId, TMessageType> : IAsyncDisposable
+public interface IActor<TId, TMessageType, TActorRef> : IAsyncDisposable
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
+    where TActorRef : IActorRef<TId, TMessageType, TActorRef>, IEquatable<TActorRef>
 {
-    TId Id { get; }
-
-    /// <summary>Sends a message to this actor with "best effort" delivery.</summary>
-    ValueTask SendAsync(TMessageType message);
+    TActorRef Reference { get; }
 }
