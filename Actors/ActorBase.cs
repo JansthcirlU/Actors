@@ -14,11 +14,10 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
     private readonly Task _messageProcessingTask;
     private long _disposed; // 1 for true, 0 for false ('long' allows Interlocked usage)
 
-    public TId Id { get; }
+    public IActorRef<TId, TMessageType> Reference { get; }
 
     protected ActorBase(TId id, ILogger logger)
     {
-        Id = id;
         _logger = logger;
         _mailbox = Channel.CreateUnbounded<TMessageType>(new UnboundedChannelOptions
         {
@@ -27,6 +26,7 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
         });
         _cancellationTokenSource = new();
         _messageProcessingTask = ProcessMessagesAsync(_cancellationTokenSource.Token);
+        Reference = new ActorRef<TId, TMessageType>(id, SendAsync);
     }
 
     protected abstract Task HandleMessageAsync(TMessageType message);
@@ -44,27 +44,27 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
                 }
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogError(ex, "Actor {ActorId} encountered an error while processing a message: {ExceptionMessage}", Id, ex.Message);
+                    _logger.LogError(ex, "Actor {ActorId} encountered an error while processing a message: {ExceptionMessage}", Reference.Id, ex.Message);
                 }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogDebug("Actor {ActorId} message processing was cancelled.", Id);
+            _logger.LogDebug("Actor {ActorId} message processing was cancelled.", Reference.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Actor {ActorId} message processing loop terminated unexpectedly: {ExceptionMessage}", Id, ex.Message);
+            _logger.LogError(ex, "Actor {ActorId} message processing loop terminated unexpectedly: {ExceptionMessage}", Reference.Id, ex.Message);
         }
     }
 
-    public async ValueTask SendAsync(TMessageType message)
+    private async ValueTask SendAsync(TMessageType message)
     {
         try
         {
             if (Interlocked.Read(ref _disposed) == 1)
             {
-                _logger.LogDebug(SendFailedLoggerTemplate, Id, "Actor is disposed.");
+                _logger.LogDebug(SendFailedLoggerTemplate, Reference.Id, "Actor is disposed.");
                 return;
             }
 
@@ -72,19 +72,19 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
         }
         catch (ObjectDisposedException)
         {
-            _logger.LogDebug(SendFailedLoggerTemplate, Id, "Actor is disposed.");
+            _logger.LogDebug(SendFailedLoggerTemplate, Reference.Id, "Actor is disposed.");
         }
         catch (OperationCanceledException cancelled)
         {
-            _logger.LogDebug(SendFailedLoggerTemplate, Id, cancelled.Message);
+            _logger.LogDebug(SendFailedLoggerTemplate, Reference.Id, cancelled.Message);
         }
         catch (InvalidOperationException invalidOperation)
         {
-            _logger.LogWarning(invalidOperation, SendFailedLoggerTemplate, Id, invalidOperation.Message);
+            _logger.LogWarning(invalidOperation, SendFailedLoggerTemplate, Reference.Id, invalidOperation.Message);
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, SendFailedLoggerTemplate, Id, exception.Message);
+            _logger.LogError(exception, SendFailedLoggerTemplate, Reference.Id, exception.Message);
         }
     }
 
@@ -92,7 +92,7 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
-        _logger.LogDebug("Disposing actor {ActorId}", Id);
+        _logger.LogDebug("Disposing actor {ActorId}", Reference.Id);
 
         try
         {
@@ -112,12 +112,12 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error occurred while disposing actor {ActorId}: {ExceptionMessage}", Id, ex.Message);
+            _logger.LogError(ex, "An error occurred while disposing actor {ActorId}: {ExceptionMessage}", Reference.Id, ex.Message);
         }
         finally
         {
             _cancellationTokenSource.Dispose();
-            _logger.LogDebug("Disposed actor {ActorId} successfully.", Id);
+            _logger.LogDebug("Disposed actor {ActorId} successfully.", Reference.Id);
             GC.SuppressFinalize(this);
         }
     }
