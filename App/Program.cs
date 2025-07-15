@@ -17,7 +17,7 @@ Stopwatch sw = new();
 // Warmup with small graph
 DirectedGraph<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupGraph = GraphSeeder.CreateFullyConnectedGraph(100);
 GraphSeeder.IntegerNode? warmupOne = warmupGraph.FindByValue(1);
-BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupSearchRunner = new BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int>(loggerFactory);
+BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupSearchRunner = new(loggerFactory);
 warmupSearchRunner.LoadGraph(warmupGraph);
 await warmupSearchRunner.RunBreadthFirstSearchFrom(warmupOne!.Value, CancellationToken.None);
 await warmupSearchRunner.DisposeAsync();
@@ -79,8 +79,6 @@ foreach (int nodeCount in nodeCounts)
     Console.WriteLine();
 
     fullyConnectedGraph = null;
-    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-    Thread.Sleep(250);
 }
 
 Console.WriteLine($"Benchmark finished at {DateTime.Now}.");
