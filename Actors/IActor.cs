@@ -3,7 +3,7 @@
 public interface IActor<TId, TMessageType, TActorRef> : IAsyncDisposable
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
-    where TActorRef : IActorRef<TId, TMessageType, TActorRef>
+    where TActorRef : IActorRef<TId, TMessageType, TActorRef>, IEquatable<TActorRef>
 {
     TActorRef Reference { get; }
 }

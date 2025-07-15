@@ -6,7 +6,7 @@ namespace Actors;
 public abstract class ActorBase<TId, TMessageType, TActorRef> : IActor<TId, TMessageType, TActorRef>
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
-    where TActorRef : IActorRef<TId, TMessageType, TActorRef>
+    where TActorRef : IActorRef<TId, TMessageType, TActorRef>, IEquatable<TActorRef>
 {
     protected readonly ILogger _logger;
     private const string SendFailedLoggerTemplate = "Could not send message to actor {ActorId}: {ExceptionMessage}";
@@ -17,7 +17,7 @@ public abstract class ActorBase<TId, TMessageType, TActorRef> : IActor<TId, TMes
 
     public TActorRef Reference { get; }
 
-    protected ActorBase(TId id, ILogger logger)
+    protected ActorBase(IActorRefFactory<TId, TMessageType, TActorRef> factory, ILogger logger)
     {
         _logger = logger;
         _mailbox = Channel.CreateUnbounded<TMessageType>(new UnboundedChannelOptions
@@ -27,7 +27,7 @@ public abstract class ActorBase<TId, TMessageType, TActorRef> : IActor<TId, TMes
         });
         _cancellationTokenSource = new();
         _messageProcessingTask = ProcessMessagesAsync(_cancellationTokenSource.Token);
-        Reference = TActorRef.Create(id, SendAsync);
+        Reference = factory.Create(SendAsync);
     }
 
     protected abstract Task HandleMessageAsync(TMessageType message);
