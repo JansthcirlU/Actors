@@ -3,9 +3,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Actors;
 
-public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
+public abstract class ActorBase<TId, TMessageType, TActorRef> : IActor<TId, TMessageType, TActorRef>
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
+    where TActorRef : IActorRef<TId, TMessageType, TActorRef>
 {
     protected readonly ILogger _logger;
     private const string SendFailedLoggerTemplate = "Could not send message to actor {ActorId}: {ExceptionMessage}";
@@ -14,7 +15,7 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
     private readonly Task _messageProcessingTask;
     private long _disposed; // 1 for true, 0 for false ('long' allows Interlocked usage)
 
-    public IActorRef<TId, TMessageType> Reference { get; }
+    public TActorRef Reference { get; }
 
     protected ActorBase(TId id, ILogger logger)
     {
@@ -26,7 +27,7 @@ public abstract class ActorBase<TId, TMessageType> : IActor<TId, TMessageType>
         });
         _cancellationTokenSource = new();
         _messageProcessingTask = ProcessMessagesAsync(_cancellationTokenSource.Token);
-        Reference = new ActorRef<TId, TMessageType>(id, SendAsync);
+        Reference = TActorRef.Create(id, SendAsync);
     }
 
     protected abstract Task HandleMessageAsync(TMessageType message);

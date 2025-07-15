@@ -1,8 +1,9 @@
 ﻿namespace Actors;
 
-public interface IActor<TId, TMessageType> : IAsyncDisposable
+public interface IActor<TId, TMessageType, TActorRef> : IAsyncDisposable
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
+    where TActorRef : IActorRef<TId, TMessageType, TActorRef>
 {
-    IActorRef<TId, TMessageType> Reference { get; }
+    TActorRef Reference { get; }
 }
