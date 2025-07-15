@@ -1,4 +1,4 @@
----- MODULE Actor ----
+---- MODULE ActorSystem ----
 EXTENDS Sequences, Naturals
 
 CONSTANTS Messages  \* Set of possible message contents
