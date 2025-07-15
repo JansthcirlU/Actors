@@ -1,11 +1,15 @@
 namespace Actors;
 
-public interface IActorRef<TId, TMessageType, TSelf>
+public interface IActorRef
+{
+    IActorId Id { get; }
+}
+public interface IActorRef<TId, TMessageType, TSelf> : IActorRef
     where TMessageType : notnull, IMessageType<TId>
     where TId : notnull, IActorId<TId>
     where TSelf : IActorRef<TId, TMessageType, TSelf>
 {
-    abstract static TSelf Create(TId id, Func<TMessageType, ValueTask> send);
-    TId Id { get; }
+    new TId Id { get; }
+    IActorId IActorRef.Id => Id;
     ValueTask SendAsync(TMessageType message);
 }
