@@ -18,9 +18,12 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
     private int _pendingWeightResponses;
     private readonly ConcurrentDictionary<(BreadthFirstSearchActorRef<TNode, TValue>, Guid), BreadthFirstSearchRunnerMessage.StartedWorkMessage> _pendingWork;
     private bool _workInitiated;
+    private bool _searchKickOffConfirmed;
+    private Guid? _kickOffId;
     private TaskCompletionSource<bool>? _runCompletionSource;
     private FrozenSet<BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight>>? _nodeActors;
     private FrozenSet<BreadthFirstSearchActorRef<TNode, TValue>>? _nodeActorReferences;
+    private BreadthFirstSearchActorRef<TNode, TValue>? _startRef;
 
     public BreadthFirstSearchRunner(ILoggerFactory loggerFactory)
         : base(new BreadthFirstSearchRunnerActorRefFactory(BreadthFirstSearchRunnerId.New()), loggerFactory.CreateLogger<BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight>>())
@@ -38,11 +41,14 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
 
         // Find starting node actor
         if (_nodeActorReferences?.SingleOrDefault(actorRef => actorRef.Node.Equals(start)) is not BreadthFirstSearchActorRef<TNode, TValue> startRef) return FrozenDictionary<TValue, TWeight>.Empty;
+        _startRef = startRef;
 
         // Start node actor was found, kick off run
         _workInitiated = true;
-        BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startSearchMessage = BreadthFirstSearchMessage.StartFrom(Reference, start.Value);
-        await startRef.SendAsync(startSearchMessage);
+        _searchKickOffConfirmed = false;
+        _kickOffId = Guid.NewGuid();
+        BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startSearchMessage = BreadthFirstSearchMessage.StartFrom(Reference, start.Value, kickOffId: _kickOffId.Value);
+        await _startRef.Value.SendAsync(startSearchMessage);
 
         // Wait till task completion source finishes
         await _runCompletionSource.Task;
@@ -121,13 +127,17 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
         if (--_pendingWeightResponses == 0) await Reference.SendAsync(BreadthFirstSearchRunnerMessage.RunFinished(Reference));
     }
 
-    private Task HandleStartedWorkMessageAsync(BreadthFirstSearchRunnerMessage.StartedWorkMessage startedWorkMessage)
+    private async Task HandleStartedWorkMessageAsync(BreadthFirstSearchRunnerMessage.StartedWorkMessage startedWorkMessage)
     {
         // Check if sender is known node actor
-        if (startedWorkMessage.SenderRef is not BreadthFirstSearchActorRef<TNode, TValue> senderRef || _nodeActorReferences?.Contains(senderRef) != true) return Task.CompletedTask;
+        if (startedWorkMessage.SenderRef is not BreadthFirstSearchActorRef<TNode, TValue> senderRef || _nodeActorReferences?.Contains(senderRef) != true) return;
+        if (!_searchKickOffConfirmed && !senderRef.Equals(_startRef!.Value))
+        {
+            await _startRef.Value.SendAsync(BreadthFirstSearchMessage.SearchKickedOff(Reference, _kickOffId!.Value));
+            _searchKickOffConfirmed = true;
+        }
 
         _pendingWork[(senderRef, startedWorkMessage.TaskId)] = startedWorkMessage;
-        return Task.CompletedTask;
     }
 
     private async Task HandleFinishedWorkMessageAsync(BreadthFirstSearchRunnerMessage.FinishedWorkMessage finishedWorkMessage)
@@ -193,9 +203,13 @@ public sealed class BreadthFirstSearchRunner<TNode, TValue, TEdge, TWeight> : Ac
             .Select(actor => actor.DisposeAsync().AsTask())
             .ToArray() ?? [];
         await Task.WhenAll(disposeActorTasks);
-
-        _runCompletionSource = null;
         _nodeActors = null;
         _nodeActorReferences = null;
+
+        _runCompletionSource = null;
+        _startRef = null;
+        _workInitiated = false;
+        _searchKickOffConfirmed = false;
+        _kickOffId = null;
     }
 }

@@ -37,6 +37,7 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
             BreadthFirstSearchMessage.StartBreadthFirstSearchMessage<TValue> startMessage => HandleStartMessageAsync(startMessage),
             BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage => HandleUpdateWeightMessageAsync(updateWeightMessage),
             BreadthFirstSearchMessage.GetTotalWeightFromStartMessage getTotalWeightFromStartMessage => HandleGetTotalWeightFromStartMessageAsync(getTotalWeightFromStartMessage),
+            BreadthFirstSearchMessage.SearchKickedOffMessage searchKickedOffMessage => HandleSearchKickedOffMessage(searchKickedOffMessage),
             _ => Task.CompletedTask
         };
 
@@ -70,18 +71,11 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage =
             BreadthFirstSearchMessage.UpdateTotalWeight(Reference, startMessage.StartValue, TotalWeightFromStart!.Value);
 
-        Guid taskId = Guid.NewGuid();
-
         // Notify the runner that work has started
-        await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkStarted(Reference, taskId));
+        await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkStarted(Reference, startMessage.KickOffId));
 
         // Message neighbours (do work)
         await NotifyNeighbours(updateWeightMessage);
-
-        await Task.Delay(100); // Somehow this fixes the race condition??
-
-        // Notify the runner that work has finished
-        await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkFinished(Reference, taskId));
     }
 
     private async Task HandleUpdateWeightMessageAsync(BreadthFirstSearchMessage.UpdateWeightMessage<TValue, TWeight> updateWeightMessage)
@@ -127,6 +121,14 @@ public sealed class BreadthFirstSearchActor<TNode, TValue, TEdge, TWeight> : Act
         BreadthFirstSearchRunnerMessage.TotalWeightFromStartMessage<TWeight> sendTotalWeightMessage =
             BreadthFirstSearchRunnerMessage.SendTotalWeight(Reference, TotalWeightFromStart);
         await Runner.SendAsync(sendTotalWeightMessage);
+    }
+
+    private async Task HandleSearchKickedOffMessage(BreadthFirstSearchMessage.SearchKickedOffMessage searchKickedOffMessage)
+    {
+        if (searchKickedOffMessage.SenderRef is not BreadthFirstSearchRunnerActorRef runnerRef) return;
+        if (!runnerRef.Equals(Runner)) return;
+
+        await Runner.SendAsync(BreadthFirstSearchRunnerMessage.WorkFinished(Reference, searchKickedOffMessage.KickOffId));
     }
 
     private async Task NotifyNeighbours(BreadthFirstSearchMessage message)
