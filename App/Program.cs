@@ -27,7 +27,7 @@ Console.WriteLine("Starting actual runs...");
 Console.WriteLine();
 
 // Benchmark greater node counts
-int[] nodeCounts = [100, 200, 400, 800, 1_600, 3_200, 6_400];
+int[] nodeCounts = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800];
 
 foreach (int nodeCount in nodeCounts)
 {
