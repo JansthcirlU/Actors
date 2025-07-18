@@ -19,7 +19,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '9.0.x'  # Change to your .NET version
+        dotnet-version: '9.0.x'
     
     - name: Restore dependencies
       run: dotnet restore Actors/Actors.csproj
@@ -30,10 +30,7 @@ jobs:
     - name: Get version from project
       id: version
       run: |
-        VERSION=$(dotnet msbuild Actors/Actors.csproj -nologo -verbosity:minimal -property:Configuration=Release -target:GetPackageVersion | tail -1)
-        if [ -z "$VERSION" ]; then
-          VERSION=$(grep -oP '<Version>\K[^<]+' Actors/Actors.csproj || echo "1.0.0")
-        fi
+        VERSION=$(grep -oP '<Version>\K[^<]+' Actors/Actors.csproj || echo "1.0.0")
         echo "package-version=$VERSION" >> $GITHUB_OUTPUT
         echo "Detected version: $VERSION"
     
@@ -49,7 +46,7 @@ jobs:
       with:
         name: actors-nuget-v${{ steps.version.outputs.package-version }}
         path: ./packages/*.nupkg
-        retention-days: 30
+        retention-days: 90
     
     - name: List created packages
       run: |
