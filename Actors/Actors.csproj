@@ -17,6 +17,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>actors;concurrency;patterns</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     
     <!-- Optional: Include symbols for debugging -->
     <IncludeSymbols>true</IncludeSymbols>
@@ -28,6 +29,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="LICENSE.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
