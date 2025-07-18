@@ -1,6 +1,7 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using System.Diagnostics;
 using ActorGraphs;
+using ActorGraphs.OrchestratedSearch;
 using App.Seeding;
 using Graphs;
 using Microsoft.Extensions.Logging;
@@ -17,9 +18,9 @@ Stopwatch sw = new();
 // Warmup with small graph
 DirectedGraph<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupGraph = GraphSeeder.CreateFullyConnectedGraph(100);
 GraphSeeder.IntegerNode? warmupOne = warmupGraph.FindByValue(1);
-BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupSearchRunner = new(loggerFactory);
+OrchestratedSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> warmupSearchRunner = new(loggerFactory);
 warmupSearchRunner.LoadGraph(warmupGraph);
-await warmupSearchRunner.RunBreadthFirstSearchFrom(warmupOne!.Value, CancellationToken.None);
+await warmupSearchRunner.RunOrchestratedSearchFrom(warmupOne!.Value, CancellationToken.None);
 await warmupSearchRunner.DisposeAsync();
 warmupGraph.RunDijkstra(warmupOne.Value);
 
@@ -27,7 +28,7 @@ Console.WriteLine("Starting actual runs...");
 Console.WriteLine();
 
 // Benchmark greater node counts
-int[] nodeCounts = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800];
+int[] nodeCounts = [100, 200, 400, 800, 1_600, 3_200, 6_400];
 
 foreach (int nodeCount in nodeCounts)
 {
@@ -37,7 +38,7 @@ foreach (int nodeCount in nodeCounts)
     if (one is null) return;
 
     IReadOnlyDictionary<int, int> distancesConcurrent;
-    await using (BreadthFirstSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> searchRunner = new(loggerFactory))
+    await using (OrchestratedSearchRunner<GraphSeeder.IntegerNode, int, GraphSeeder.IntegerEdge, int> searchRunner = new(loggerFactory))
     {
         // Load graph and run search
         sw.Restart();
@@ -48,7 +49,7 @@ foreach (int nodeCount in nodeCounts)
         Console.WriteLine($"Time to load a fully connected graph with {nodeCount} nodes: {timeToLoad}");
 
         sw.Restart();
-        distancesConcurrent = await searchRunner.RunBreadthFirstSearchFrom(one.Value, CancellationToken.None);
+        distancesConcurrent = await searchRunner.RunOrchestratedSearchFrom(one.Value, CancellationToken.None);
         sw.Stop();
 
         TimeSpan timeToSearchConcurrently = sw.Elapsed;

@@ -1,17 +1,17 @@
 using System.Numerics;
 using Actors;
 
-namespace ActorGraphs;
+namespace ActorGraphs.OrchestratedSearch;
 
-public abstract record BreadthFirstSearchRunnerMessage(IActorRef SenderRef) : IMessageType<BreadthFirstSearchRunnerId>
+public abstract record OrchestratedSearchRunnerMessage(IActorRef SenderRef) : IMessageType<OrchestratedSearchRunnerId>
 {
-    public sealed record TotalWeightFromStartMessage<TWeight>(IActorRef SenderRef, TWeight? TotalWeight) : BreadthFirstSearchRunnerMessage(SenderRef)
+    public sealed record TotalWeightFromStartMessage<TWeight>(IActorRef SenderRef, TWeight? TotalWeight) : OrchestratedSearchRunnerMessage(SenderRef)
         where TWeight : struct, IComparable<TWeight>, IAdditionOperators<TWeight, TWeight, TWeight>, IAdditiveIdentity<TWeight, TWeight>;
-    public sealed record StartedWorkMessage(IActorRef SenderRef, Guid TaskId) : BreadthFirstSearchRunnerMessage(SenderRef);
-    public sealed record FinishedWorkMessage(IActorRef SenderRef, Guid TaskId) : BreadthFirstSearchRunnerMessage(SenderRef);
-    public sealed record NoNeighboursMessage<TValue>(IActorRef SenderRef, TValue ActorNodeValue) : BreadthFirstSearchRunnerMessage(SenderRef);
-    public sealed record RunFinishedMessage(IActorRef SenderRef) : BreadthFirstSearchRunnerMessage(SenderRef);
-    public sealed record RunFinishedImmediatelyMessage<TValue>(IActorRef SenderRef, TValue StartValue) : BreadthFirstSearchRunnerMessage(SenderRef);
+    public sealed record StartedWorkMessage(IActorRef SenderRef, Guid TaskId) : OrchestratedSearchRunnerMessage(SenderRef);
+    public sealed record FinishedWorkMessage(IActorRef SenderRef, Guid TaskId) : OrchestratedSearchRunnerMessage(SenderRef);
+    public sealed record NoNeighboursMessage<TValue>(IActorRef SenderRef, TValue ActorNodeValue) : OrchestratedSearchRunnerMessage(SenderRef);
+    public sealed record RunFinishedMessage(IActorRef SenderRef) : OrchestratedSearchRunnerMessage(SenderRef);
+    public sealed record RunFinishedImmediatelyMessage<TValue>(IActorRef SenderRef, TValue StartValue) : OrchestratedSearchRunnerMessage(SenderRef);
 
     public static TotalWeightFromStartMessage<TWeight> SendTotalWeight<TWeight>(IActorRef senderRef, TWeight? totalWeight)
         where TWeight : struct, IComparable<TWeight>, IAdditionOperators<TWeight, TWeight, TWeight>, IAdditiveIdentity<TWeight, TWeight>
