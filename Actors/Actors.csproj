@@ -4,6 +4,26 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Properties -->
+    <PackageId>JansthcirlU.Actors</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Jan Ulrichts</Authors>
+    <Company>Ulrichts</Company>
+    <Product>Actors Library</Product>
+    <Description>A library for actor pattern implementation</Description>
+    <PackageProjectUrl>https://github.com/JansthcirlU/Actors</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/JansthcirlU/Actors</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>actors;concurrency;patterns</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    
+    <!-- Optional: Include symbols for debugging -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    
+    <!-- Generate package on build (optional) -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
