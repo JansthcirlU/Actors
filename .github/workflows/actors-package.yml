@@ -1,0 +1,57 @@
+# .github/workflows/actors-package.yml
+name: Package Actors
+
+on:
+  push:
+    branches: [ main ]
+    paths: 
+      - 'Actors/**'
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'  # Change to your .NET version
+    
+    - name: Restore dependencies
+      run: dotnet restore Actors/Actors.csproj
+    
+    - name: Build project
+      run: dotnet build Actors/Actors.csproj --configuration Release --no-restore
+    
+    - name: Get version from project
+      id: version
+      run: |
+        VERSION=$(dotnet msbuild Actors/Actors.csproj -nologo -verbosity:minimal -property:Configuration=Release -target:GetPackageVersion | tail -1)
+        if [ -z "$VERSION" ]; then
+          VERSION=$(grep -oP '<Version>\K[^<]+' Actors/Actors.csproj || echo "1.0.0")
+        fi
+        echo "package-version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Detected version: $VERSION"
+    
+    - name: Create NuGet package
+      run: |
+        dotnet pack Actors/Actors.csproj \
+          --configuration Release \
+          --no-build \
+          --output ./packages
+    
+    - name: Upload package as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: actors-nuget-v${{ steps.version.outputs.package-version }}
+        path: ./packages/*.nupkg
+        retention-days: 30
+    
+    - name: List created packages
+      run: |
+        echo "Created packages:"
+        ls -la ./packages/
