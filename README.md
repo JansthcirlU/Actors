@@ -1,6 +1,11 @@
 # Exploring the actor model in .NET
 
-🚧 🚨 **Work in progress!** 🚨 🚧
+## Archival notice
+
+This repo will no longer be maintained as I've decided to no longer try to implement my own actor model framework.
+This code should not be used in production as there still are some race conditions when it comes to actor disposal, and the generics are hairy and unclear without fluent builders to assist in actor creation.
+
+If for some reason this is the first actor framework you've found, onsider using [Microsoft Orleans](https://github.com/dotnet/orleans) or [Proto.Actor](https://github.com/asynkron/protoactor-dotnet/) instead, since they are actually mature and actively maintained.
 
 ## Software as communicating actors
 
